@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Rent Hunt — an Optimal Stopping game</title>
+<style>
+  :root{
+    --ink:#20303a; --ink-soft:#5a6b74; --paper:#f3ede2; --card:#ffffff;
+    --line:#d8cdb8; --seen:#e9e1cf; --gold:#c98b2e; --go:#2f7d5b; --stop:#b5482f; --best:#2f7d5b;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--paper); color:var(--ink);
+    font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    line-height:1.5; -webkit-font-smoothing:antialiased;
+    padding:clamp(16px,4vw,40px); max-width:820px; margin:0 auto;
+  }
+  h1{font-size:clamp(28px,6vw,42px); line-height:1.04; margin:0 0 6px; letter-spacing:-.01em}
+  .sub{color:var(--ink-soft); margin:0 0 24px; font-size:16px; max-width:60ch}
+  .rule{border:0; border-top:1.5px solid var(--line); margin:22px 0}
+  .hidden{display:none !important}
+
+  /* ---- setup page ---- */
+  .setup-card{
+    background:var(--card); border:1.5px solid var(--line); border-radius:2px;
+    padding:28px 26px; box-shadow:6px 6px 0 rgba(32,48,58,.06);
+  }
+  .setup-card h2{margin:0 0 4px; font-size:22px}
+  .setup-card p{margin:0 0 20px; color:var(--ink-soft); font-size:15px}
+  .setup-card p.how{font-size:15.5px; line-height:1.55}
+  .setup-card p.how b{color:var(--ink)}
+
+  button{
+    font-family:inherit; font-size:17px; cursor:pointer;
+    border:1.5px solid var(--ink); border-radius:2px; padding:12px 24px;
+    background:var(--card); color:var(--ink); transition:transform .04s ease, background .15s ease;
+  }
+  button:hover{background:#faf6ee}
+  button:active{transform:translateY(1px)}
+  button:focus-visible{outline:3px solid var(--gold); outline-offset:2px}
+  button.primary{background:var(--go); border-color:var(--go); color:#fff}
+  button.primary:hover{background:#27694c}
+  button.ghost{color:var(--ink-soft)}
+  button:disabled{opacity:.4; cursor:not-allowed}
+
+  /* ---- hunt page ---- */
+  .roundbar{display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:6px}
+  .city{font-size:19px; font-weight:600}
+  .city .flag{margin-right:.35em}
+  .roundbar .quit{font-size:14px}
+  .locationline{color:var(--ink-soft); font-size:14px; margin:0 0 16px}
+
+  .status{display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:14px}
+  .status .pos{font-size:15px; color:var(--ink-soft)}
+  .status .pos b{color:var(--ink); font-variant-numeric:tabular-nums}
+
+  .stage{
+    background:var(--card); border:1.5px solid var(--line); border-radius:2px;
+    padding:26px 24px 22px; box-shadow:6px 6px 0 rgba(32,48,58,.06);
+  }
+  .house-no{font-size:14px; color:var(--ink-soft); margin:0 0 2px}
+  .rent{font-size:clamp(38px,10vw,60px); font-weight:600; letter-spacing:-.02em; line-height:1; font-variant-numeric:tabular-nums; margin:0}
+  .rent .cur{font-size:.42em; font-weight:600; vertical-align:.45em; color:var(--ink-soft); margin-right:.12em}
+  .rent .per{font-size:.3em; color:var(--ink-soft); font-weight:400}
+  .hint{color:var(--ink-soft); font-size:15px; margin:12px 0 0; min-height:1.4em}
+  .controls{display:flex; gap:12px; margin-top:22px; flex-wrap:wrap}
+
+  .track-wrap{margin-top:22px}
+  .track-label{font-size:13px; color:var(--ink-soft); margin:0 0 8px}
+  .track{display:flex; gap:6px; flex-wrap:wrap}
+  .slot{
+    width:34px; height:40px; border:1.5px solid var(--line); border-radius:2px; background:var(--card);
+    display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--ink-soft);
+    font-variant-numeric:tabular-nums; position:relative;
+  }
+  .slot.seen{background:var(--seen); border-color:#cbbfa6}
+  .slot.current{border-color:var(--gold); border-width:2px; box-shadow:0 0 0 3px rgba(201,139,46,.18)}
+  .slot.reveal-best{background:var(--best); border-color:var(--best); color:#fff; font-weight:600}
+  .slot.reveal-pick{outline:3px solid var(--gold); outline-offset:1px}
+
+  .result{margin-top:22px; border:1.5px solid var(--line); border-radius:2px; padding:20px 22px; background:var(--card); box-shadow:6px 6px 0 rgba(32,48,58,.06)}
+  .result.win{border-color:var(--go)} .result.lose{border-color:var(--stop)}
+  .verdict{font-size:22px; margin:0 0 6px; font-weight:600}
+  .result.win .verdict{color:var(--go)} .result.lose .verdict{color:var(--stop)}
+  .result p{margin:6px 0 0; font-size:16px} .result .detail{color:var(--ink-soft); font-size:15px}
+
+  .stats{margin-top:26px; display:grid; grid-template-columns:repeat(3,1fr); gap:12px}
+  .stat{border:1.5px solid var(--line); border-radius:2px; background:var(--card); padding:14px 12px; text-align:center}
+  .stat .n{font-size:30px; font-weight:600; font-variant-numeric:tabular-nums; line-height:1}
+  .stat .l{font-size:13px; color:var(--ink-soft); margin-top:6px}
+  .stats-foot{display:flex; justify-content:space-between; align-items:center; margin-top:12px; gap:12px; flex-wrap:wrap}
+  .stats-foot .note{font-size:13px; color:var(--ink-soft); margin:0}
+
+  .gamebar{margin-bottom:10px}
+  .gamebar .pos{font-size:15px; color:var(--ink-soft)}
+  .gamebar .pos b{color:var(--ink); font-variant-numeric:tabular-nums}
+  .table-head{display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:12px}
+  .table-title{margin:0; font-size:20px}
+  .empty{color:var(--ink-soft); font-size:15px; margin:0; padding:16px 0}
+  table.games{width:100%; border-collapse:collapse; font-size:16px}
+  table.games th, table.games td{text-align:left; padding:11px 12px; border-bottom:1.5px solid var(--line)}
+  table.games thead th{font-size:13px; color:var(--ink-soft); font-weight:600; border-bottom:1.5px solid var(--ink)}
+  table.games td{font-variant-numeric:tabular-nums}
+  table.games td.rate b{font-weight:600}
+  table.games tr:last-child td{border-bottom:0}
+  .rate-good{color:var(--go)} .rate-mid{color:var(--ink)} .rate-low{color:var(--stop)}
+  @media (max-width:520px){ .rent{font-size:46px} .slot{width:30px; height:36px} }
+  @media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+</head>
+<body>
+
+<!-- ============ PAGE 1: SETUP ============ -->
+<section id="page-setup">
+  <h1>The Rent Hunt</h1>
+
+  <div class="setup-card">
+    <p class="how">You will be shown <b>10 flats</b>, one at a time, and your goal is to choose the cheapest one to rent. At each flat you must decide: take it and stop, or let it go and keep looking. Once you let a flat go, you cannot return to it. Each round is a fresh set of flats — play round after round and try to <b>improve your success rate by finding a good strategy</b>.</p>
+    <button class="primary" id="start">Play Game →</button>
+  </div>
+
+  <hr class="rule" />
+  <div class="table-head">
+    <h2 class="table-title">Your past games</h2>
+    <button class="ghost" id="reset-stats">Reset history</button>
+  </div>
+  <div id="games-mount">
+    <p class="empty" id="games-empty">No games yet. Press Play Game to start. A game is as many rounds as you like — end it when you feel done.</p>
+    <table class="games hidden" id="games-table">
+      <thead><tr><th>Game</th><th>Rounds</th><th>Success rate</th></tr></thead>
+      <tbody id="games-body"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ PAGE 2: HUNT ============ -->
+<section id="page-hunt" class="hidden">
+  <div class="roundbar">
+    <div class="city" id="city"></div>
+    <button class="ghost quit" id="quit">End game →</button>
+  </div>
+  <p class="locationline" id="locationline"></p>
+
+  <div class="gamebar">
+    <div class="pos">Round <b id="round-no">1</b> &nbsp;·&nbsp; this game: <b id="game-rate">—</b></div>
+  </div>
+  <div class="status">
+    <div class="pos">Flat <b id="pos">1</b> of <b id="total">12</b> &nbsp;·&nbsp; seen so far: <b id="seen-count">1</b></div>
+    <div class="pos">cheapest you've seen: <b id="best-so-far">—</b></div>
+  </div>
+
+  <section class="stage" id="stage" aria-live="polite">
+    <p class="house-no" id="house-no">Flat 1</p>
+    <p class="rent" id="rent"></p>
+    <p class="hint" id="hint"></p>
+    <div class="controls">
+      <button class="primary" id="take">Take this flat</button>
+      <button id="pass">Keep looking →</button>
+    </div>
+  </section>
+
+  <div class="track-wrap">
+    <p class="track-label">Your hunt so far</p>
+    <div class="track" id="track" aria-hidden="true"></div>
+  </div>
+
+  <div id="result-mount"></div>
+</section>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- cities: realistic monthly-rent bands + currency, wildly different magnitudes ----------
+  // [step] keeps numbers "round" in local convention; lo/hi are inclusive multiples of step.
+  var CITIES = [
+    {name:"Tokyo",        flag:"🇯🇵", cur:"¥",  suffix:"", note:"Japan · yen",             lo:60000, hi:240000, step:1000},
+    {name:"Lisbon",       flag:"🇵🇹", cur:"€",  suffix:"", note:"Portugal · euro",         lo:750,   hi:2200,   step:10},
+    {name:"Lagos",        flag:"🇳🇬", cur:"₦",  suffix:"", note:"Nigeria · naira",         lo:150000,hi:900000, step:5000},
+    {name:"Mexico City",  flag:"🇲🇽", cur:"$",  suffix:" MXN", note:"Mexico · peso",       lo:8000,  hi:32000,  step:500},
+    {name:"Mumbai",       flag:"🇮🇳", cur:"₹",  suffix:"", note:"India · rupee",           lo:18000, hi:85000,  step:1000},
+    {name:"Hanoi",        flag:"🇻🇳", cur:"₫",  suffix:"", note:"Vietnam · dong",          lo:4000000,hi:16000000,step:500000},
+    {name:"Zurich",       flag:"🇨🇭", cur:"CHF ",suffix:"", note:"Switzerland · franc",    lo:1600,  hi:4200,   step:50},
+    {name:"Cairo",        flag:"🇪🇬", cur:"£",  suffix:" EGP", note:"Egypt · pound",       lo:6000,  hi:35000,  step:500},
+    {name:"Seoul",        flag:"🇰🇷", cur:"₩",  suffix:"", note:"South Korea · won",       lo:600000,hi:2200000,step:10000},
+    {name:"Buenos Aires", flag:"🇦🇷", cur:"$",  suffix:" ARS", note:"Argentina · peso",    lo:180000,hi:750000, step:5000}
+  ];
+
+  // ---------- persistent history: a list of completed games ----------
+  var GAMES_KEY="rentHuntGames.v1";
+  var FLATS=10;   // always ten flats per round
+  var games=loadGames();               // [{rounds, best, flats}]
+  function loadGames(){
+    try{ var raw=localStorage.getItem(GAMES_KEY); if(raw){ var a=JSON.parse(raw); if(Array.isArray(a)) return a; } }catch(e){}
+    return [];
+  }
+  function saveGames(){ try{ localStorage.setItem(GAMES_KEY, JSON.stringify(games)); }catch(e){} }
+
+  var $=function(id){return document.getElementById(id);};
+
+  // ---------- setup page ----------
+  $("start").addEventListener("click", function(){ beginGame(); });
+  $("reset-stats").addEventListener("click", function(){
+    games=[]; saveGames(); renderGames();
+  });
+  $("quit").addEventListener("click", function(){ recordGame(); showSetup(); });
+
+  // ---------- state ----------
+  // per-round:
+  var city, rents=[], idx=0, bestSeen=Infinity, finished=false, trueMin=0, trueMinIdx=-1;
+  // per-game (a session of as many rounds as the player wants, all at 10 flats):
+  var game=null;   // {flats, rounds, best}
+
+  function fmt(n){ return city.cur + n.toLocaleString("en-US") + city.suffix; }
+  function fmtShort(n){
+    // compact label for the reveal track
+    if(n>=1000000) return (n/1000000).toFixed(n%1000000?1:0)+"M";
+    if(n>=1000)    return Math.round(n/1000)+"k";
+    return ""+n;
+  }
+
+  function beginGame(){
+    game={rounds:0, best:0};
+    gameRecorded=false;
+    dealRound();
+  }
+  function dealRound(){
+    var n=FLATS;
+    city = CITIES[Math.floor(Math.random()*CITIES.length)];
+    // draw n rents from the city band, on its step grid, all distinct
+    var set={}, vals=[];
+    var slots=[];
+    for(var v=city.lo; v<=city.hi; v+=city.step) slots.push(v);
+    // shuffle slots, take first n (guarantees distinct values)
+    for(var i=slots.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=slots[i]; slots[i]=slots[j]; slots[j]=t; }
+    vals = slots.slice(0, Math.min(n, slots.length));
+    // if band too small for n, pad by re-drawing with finer offsets (rare)
+    while(vals.length<n){ vals.push(vals[Math.floor(Math.random()*vals.length)] + city.step*vals.length); }
+    // now shuffle the chosen values into viewing order
+    for(var k=vals.length-1;k>0;k--){ var m=Math.floor(Math.random()*(k+1)); var tmp=vals[k]; vals[k]=vals[m]; vals[m]=tmp; }
+    rents=vals;
+    trueMin=Math.min.apply(null,rents);
+    trueMinIdx=rents.indexOf(trueMin);
+
+    idx=0; bestSeen=Infinity; finished=false;
+    $("result-mount").innerHTML=""; $("stage").style.display="";
+    $("take").disabled=false; $("pass").disabled=false;
+    $("city").innerHTML='<span class="flag">'+city.flag+'</span>'+city.name;
+    $("locationline").textContent="You're flat-hunting in "+city.name+". Rents are shown in the local currency ("+city.note+").";
+    updateGameBar();
+    buildTrack(); render();
+    showHunt();
+    $("take").focus();
+  }
+  function updateGameBar(){
+    $("round-no").textContent = game.rounds+1;   // the round about to be played
+    $("game-rate").textContent = game.rounds ? Math.round(100*game.best/game.rounds)+"% ("+game.best+"/"+game.rounds+")" : "—";
+  }
+
+  function buildTrack(){
+    var t=$("track"); t.innerHTML="";
+    for(var i=0;i<rents.length;i++){ var s=document.createElement("div"); s.className="slot"; s.id="slot-"+i; s.textContent=(i+1); t.appendChild(s); }
+  }
+
+  function render(){
+    var cur=rents[idx];
+    if(cur<bestSeen) bestSeen=cur;
+    $("total").textContent=rents.length;
+    $("pos").textContent=idx+1;
+    $("seen-count").textContent=idx+1;
+    $("best-so-far").textContent=fmt(bestSeen);
+    $("house-no").textContent="Flat "+(idx+1);
+    $("rent").innerHTML='<span class="cur">'+city.cur.trim()+'</span>'+cur.toLocaleString("en-US")+(city.suffix?'<span class="per">'+city.suffix+'</span>':'')+' <span class="per">/ month</span>';
+
+    if(idx===0) $("hint").textContent="This is the first flat. You have nothing to compare it to yet.";
+    else if(cur===bestSeen) $("hint").textContent="This is the cheapest flat you have seen so far.";
+    else $("hint").textContent="You have already seen a cheaper flat than this one.";
+
+    if(idx===rents.length-1){ $("pass").disabled=true; $("hint").textContent+=" This is the last flat — you must take it."; }
+    else $("pass").disabled=false;
+
+    for(var i=0;i<rents.length;i++){ var s=$("slot-"+i); s.className="slot"; if(i<idx) s.classList.add("seen"); if(i===idx) s.classList.add("current"); }
+  }
+
+  function commit(){
+    finished=true; $("take").disabled=true; $("pass").disabled=true;
+    var pick=rents[idx], won=(idx===trueMinIdx);
+    for(var i=0;i<rents.length;i++){ var s=$("slot-"+i); s.className="slot"; s.textContent=fmtShort(rents[i]); s.style.fontSize="10px"; if(i===trueMinIdx) s.classList.add("reveal-best"); if(i===idx) s.classList.add("reveal-pick"); }
+    var sorted=rents.slice().sort(function(a,b){return a-b;}); var rank=sorted.indexOf(pick)+1;
+
+    // tally into the current game
+    game.rounds++;
+    if(won) game.best++;
+    updateGameBar();
+
+    var div=document.createElement("div"); div.className="result "+(won?"win":"lose"); var msg;
+    if(won){
+      msg="<p class='verdict'>You found the cheapest flat in "+city.name+".</p><p>You committed to "+fmt(pick)+", and nothing in the set was cheaper.</p>";
+    }else{
+      msg="<p class='verdict'>Not the cheapest.</p><p>You took "+fmt(pick)+". The cheapest was "+fmt(trueMin)+" (flat "+(trueMinIdx+1)+").</p><p class='detail'>Your flat ranked #"+rank+" out of "+rents.length+" on price.</p>";
+    }
+    msg+="<p class='detail'>This game so far: you've found the cheapest flat "+game.best+" out of "+game.rounds+" round"+(game.rounds===1?"":"s")+" ("+Math.round(100*game.best/game.rounds)+"%).</p>";
+    msg+="<div class='controls'><button class='primary' id='again'>Play another round</button><button id='endgame'>End game</button></div>";
+    div.innerHTML=msg; $("result-mount").appendChild(div); $("stage").style.display="none";
+    $("again").addEventListener("click", function(){ dealRound(); });
+    $("endgame").addEventListener("click", function(){ recordGame(); showSetup(); });
+    $("again").focus();
+  }
+
+  function pass(){ if(finished) return; if(idx<rents.length-1){ idx++; render(); } }
+
+  var gameRecorded=false;
+  function recordGame(){
+    if(!game || game.rounds<1) return;      // don't record empty games
+    if(gameRecorded) return;                // guard against double-record
+    games.push({rounds:game.rounds, best:game.best});
+    saveGames(); renderGames();
+    gameRecorded=true;
+  }
+  function renderGames(){
+    var body=$("games-body"), table=$("games-table"), empty=$("games-empty");
+    body.innerHTML="";
+    if(!games.length){ table.classList.add("hidden"); empty.classList.remove("hidden"); return; }
+    empty.classList.add("hidden"); table.classList.remove("hidden");
+    for(var i=0;i<games.length;i++){
+      var g=games[i];
+      var pct=Math.round(100*g.best/g.rounds);
+      var cls = pct>=37?"rate-good":(pct>=15?"rate-mid":"rate-low");
+      var tr=document.createElement("tr");
+      tr.innerHTML="<td>"+(i+1)+"</td><td>"+g.rounds+"</td>"+
+                   "<td class='rate'><b class='"+cls+"'>"+pct+"%</b> <span style='color:var(--ink-soft)'>("+g.best+"/"+g.rounds+")</span></td>";
+      body.appendChild(tr);
+    }
+  }
+
+  function showHunt(){ $("page-setup").classList.add("hidden"); $("page-hunt").classList.remove("hidden"); window.scrollTo(0,0); }
+  function showSetup(){ $("page-hunt").classList.add("hidden"); $("page-setup").classList.remove("hidden"); renderGames(); window.scrollTo(0,0); }
+
+  $("take").addEventListener("click", commit);
+  $("pass").addEventListener("click", pass);
+  document.addEventListener("keydown", function(e){
+    if($("page-hunt").classList.contains("hidden")||finished) return;
+    if(e.key==="ArrowRight"){ e.preventDefault(); if(!$("pass").disabled) pass(); }
+    else if(e.key==="Enter"){ e.preventDefault(); commit(); }
+  });
+
+  renderGames();
+})();
+</script>
+</body>
+</html>
